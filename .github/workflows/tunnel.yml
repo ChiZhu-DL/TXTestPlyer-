@@ -1,0 +1,74 @@
+name: TX Player + Cloudflare Tunnel
+
+# 手动触发，或 push 到 main/master 自动触发
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+# GitHub 单个 Job 上限 6 小时；这里跑 ~5.5 小时后自动结束，重跑即可续期
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 Python 依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 启动播放器服务 (端口 8071)
+        run: |
+          nohup python tx_player.py > app.log 2>&1 &
+          sleep 10
+          echo "===== 应用日志 ====="
+          tail -n 40 app.log
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8071/)
+          echo "本地服务自检: HTTP $CODE"
+          [ "$CODE" = "200" ] || { echo "服务未正常启动"; tail -n 100 app.log; exit 1; }
+
+      - name: 安装 Cloudflare cloudflared
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+            -O /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+          sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
+          cloudflared --version
+
+      - name: 启动隧道并输出公网地址
+        run: |
+          # Quick Tunnel：无需 Cloudflare 账号，随机分配 *.trycloudflare.com 地址
+          nohup cloudflared tunnel --url http://127.0.0.1:8071 --no-autoupdate > tunnel.log 2>&1 &
+          TUNNEL_PID=$!
+
+          URL=""
+          for i in $(seq 1 90); do
+            URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' tunnel.log | head -1)
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+
+          if [ -z "$URL" ]; then
+            echo "❌ 隧道启动失败"
+            tail -n 80 tunnel.log
+            exit 1
+          fi
+
+          echo "=================================================="
+          echo "  ✅ 公网访问地址: $URL"
+          echo "  （访问即为本 Job 里运行的 python tx_player.py）"
+          echo "=================================================="
+          echo "$URL" > tunnel_url.txt
+          echo "🌐 **公网访问地址：[$URL]($URL)**（点击即达播放器）" >> "$GITHUB_STEP_SUMMARY"
+          echo "⏳ 任务将持续运行约 5.5 小时，到期后重新 Run workflow 即可" >> "$GITHUB_STEP_SUMMARY"
+
+          # 保持隧道进程存活直到超时上限；隧道崩溃则 Job 提前结束
+          wait $TUNNEL_PID || sleep 60

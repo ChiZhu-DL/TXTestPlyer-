@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TX 视频播放</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<style>
+  :root { --bg:#f6f7f9; --card:#ffffff; --line:#e5e7eb; --txt:#1f2328; --sub:#6b7280; --accent:#2563eb; --danger:#dc2626; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  header { position:sticky; top:0; z-index:10; background:var(--card); border-bottom:1px solid var(--line);
+           display:flex; gap:12px; align-items:center; padding:10px 20px; }
+  header h1 { font-size:18px; white-space:nowrap; }
+  #searchBox { flex:1; display:flex; gap:8px; max-width:640px; }
+  #q { flex:1; padding:8px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; outline:none; }
+  #q:focus { border-color:var(--accent); }
+  button { padding:8px 16px; border:none; border-radius:8px; background:var(--accent); color:#fff;
+           font-size:14px; cursor:pointer; white-space:nowrap; }
+  button.ghost { background:#fff; color:var(--txt); border:1px solid var(--line); }
+  button:hover { opacity:.92; }
+  #acct { font-size:12px; color:var(--sub); white-space:nowrap; display:flex; align-items:center; gap:8px; }
+  .viptag { display:inline-flex; align-items:center; gap:2px; padding:2px 10px; border-radius:999px;
+            background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; font-weight:700;
+            font-size:12px; box-shadow:0 0 6px rgba(245,158,11,.55); letter-spacing:1px; }
+  .novip { color:#9ca3af; font-size:12px; }
+  #getVip { display:inline-flex; align-items:center; padding:4px 12px; border-radius:999px;
+            background:linear-gradient(135deg,#fbbf24,#f59e0b); color:#7c2d12; font-weight:700;
+            font-size:12px; text-decoration:none; border:1px solid #fcd34d;
+            box-shadow:0 1px 4px rgba(245,158,11,.4); white-space:nowrap; }
+  #getVip:hover { filter:brightness(1.08); }
+  #acct b.vip { color:#d97706; }
+  main { padding:16px 20px 20px; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .tab { padding:6px 16px; border-radius:999px; border:1px solid var(--line); background:var(--card);
+         font-size:13px; cursor:pointer; color:var(--txt); }
+  .tab.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .sec { margin:18px 0 10px; font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .sec::before { content:''; width:4px; height:16px; background:var(--accent); border-radius:2px; }
+  #grid { display:block; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden;
+          cursor:pointer; transition:box-shadow .15s; display:flex; flex-direction:column; }
+  .card:hover { box-shadow:0 4px 14px rgba(0,0,0,.10); }
+  .thumb { position:relative; background:#eceef2; }
+  .thumb img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; }
+  .noimg { width:100%; aspect-ratio:16/9; display:flex; align-items:center; justify-content:center;
+           background:linear-gradient(135deg,#e6e9f0,#cfd6e4); color:#9aa3b2; font-size:12px; }
+  .dur { position:absolute; right:6px; bottom:6px; background:rgba(0,0,0,.72); color:#fff;
+         font-size:11px; padding:1px 6px; border-radius:4px; }
+  .vip { position:absolute; left:6px; top:6px; background:#f59e0b; color:#fff;
+         font-size:10px; padding:1px 6px; border-radius:4px; font-weight:600; }
+  .coin { position:absolute; left:6px; top:6px; background:#0891b2; color:#fff;
+          font-size:10px; padding:1px 6px; border-radius:4px; font-weight:600; }
+  .row-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px; align-items:start; }
+  .card .info { padding:8px 10px 10px; flex:1; }
+  .card .t { font-size:13px; line-height:1.45; height:2.9em; overflow:hidden; display:-webkit-box;
+             -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-all; }
+  .card .m { font-size:11px; color:var(--sub); margin-top:5px; display:flex; gap:10px; flex-wrap:wrap; }
+  #hint { text-align:center; color:var(--sub); padding:60px 0; font-size:14px; }
+  /* 播放弹层 */
+  #modal { position:fixed; inset:0; background:rgba(15,20,30,.65); display:none;
+           align-items:flex-start; justify-content:center; padding:36px 16px; overflow:auto; z-index:50; }
+  #modal.show { display:flex; }
+  #panel { background:var(--card); border-radius:12px; width:min(880px,100%); overflow:hidden; }
+  #player { width:100%; aspect-ratio:16/9; background:#000; }
+  #pinfo { padding:14px 18px; }
+  #pinfo h2 { font-size:16px; margin-bottom:6px; }
+  #pinfo .meta { font-size:12px; color:var(--sub); display:flex; gap:14px; flex-wrap:wrap; }
+  #ptips { margin-top:8px; font-size:13px; color:var(--danger); display:none; }
+  #close { float:right; }
+  /* 设置弹层 */
+  #setModal { position:fixed; inset:0; background:rgba(15,20,30,.65); display:none;
+              align-items:center; justify-content:center; z-index:60; }
+  #setModal.show { display:flex; }
+  #setPanel { background:var(--card); border-radius:12px; padding:22px 24px; width:min(460px,92%); }
+  #setPanel h3 { margin-bottom:14px; }
+  #setPanel label { display:block; font-size:12px; color:var(--sub); margin:10px 0 4px; }
+  #setPanel input { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px;
+                    font-size:13px; font-family:Consolas,monospace; }
+  #setPanel .row { display:flex; gap:10px; margin-top:16px; }
+  #setPanel .row button { flex:1; }
+  #acctInfo { font-size:12px; margin-top:10px; color:var(--sub); }
+  #toast { position:fixed; left:50%; bottom:32px; transform:translateX(-50%); background:#111827; color:#fff;
+           padding:8px 18px; border-radius:8px; font-size:13px; display:none; z-index:99; }
+
+  /* ---- 移动端适配 ---- */
+  @media (max-width: 640px) {
+    header { flex-wrap: wrap; padding:10px 12px; gap:8px; }
+    header h1 { font-size:16px; }
+    #searchBox { order:3; flex-basis:100%; max-width:none; }
+    #acct { margin-left:auto; font-size:11px; }
+    main { padding:12px; }
+    .row-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+    .card .t { font-size:12px; }
+    #tabs { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; }
+    #tabs::-webkit-scrollbar { display:none; }
+    .tab { flex:0 0 auto; padding:5px 14px; }
+    .sec { font-size:14px; margin:14px 0 8px; }
+    #modal { padding:10px 6px; align-items:center; }
+    #pinfo { padding:10px 12px; }
+    #pinfo h2 { font-size:14px; line-height:1.5; }
+    #setPanel { padding:18px 16px; }
+  }
+  @media (min-width:641px) and (max-width:1024px) {
+    .row-grid { grid-template-columns:repeat(3,1fr); }
+  }
+  @media (min-width:1400px) {
+    main { max-width:1400px; margin:0 auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>TX 视频播放</h1>
+  <div id="searchBox">
+    <input id="q" placeholder="搜索视频（留空 = 随机推荐流），回车搜索" autocomplete="off">
+    <button onclick="doSearch()">搜索</button>
+  </div>
+  <span id="acct">账号状态未知</span>
+  <a id="getVip" href="https://bkmh.alwaysdata.net/" target="_blank" rel="noopener">获取VIP</a>
+  <button class="ghost" onclick="openSettings()">设置</button>
+</header>
+
+<main>
+  <div id="tabs"></div>
+  <div id="hint">加载中…</div>
+  <div id="grid"></div>
+  <div id="moreWrap" style="text-align:center;padding:18px 0;">
+    <button id="moreBtn" class="ghost" onclick="loadMore()" style="display:none;">加载更多</button>
+  </div>
+</main>
+
+<!-- 播放弹层 -->
+<div id="modal">
+  <div id="panel">
+    <div id="pinfo">
+      <button id="close" class="ghost" onclick="closeModal()">关闭</button>
+      <h2 id="pname">加载中…</h2>
+      <div class="meta" id="pmeta"></div>
+      <div id="ptips"></div>
+    </div>
+    <video id="player" controls playsinline></video>
+  </div>
+</div>
+
+<!-- 设置弹层 -->
+<div id="setModal">
+  <div id="setPanel">
+    <h3>账号设置（保存在 config.json）</h3>
+    <label>token（完整格式：{token}_{uid}；<b>留空 = 自动创建游客号</b>）</label>
+    <input id="cfgToken" placeholder="留空自动建游客号，或填抓包得到的 token">
+    <label>deviceId（游客号身份锚点，留空自动生成）</label>
+    <input id="cfgDevice" placeholder="自动生成">
+    <label>API 线路</label>
+    <input id="cfgHost" placeholder="http://api.6hi6q6.com">
+    <div class="row">
+      <button onclick="saveSettings()">保存并验证</button>
+      <button class="ghost" onclick="newGuest()">新建游客号</button>
+      <button class="ghost" onclick="closeSettings()">取消</button>
+    </div>
+    <div id="acctInfo"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let hls = null;
+
+/* 统一请求封装：能识别"没从 8071 服务打开"的情况 */
+async function jfetch(url, opts) {
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (e) {
+    throw new Error('无法连接后端接口 —— 请先运行 python tx_player.py，并用 http://127.0.0.1:8071 打开本页（不要直接双击 html 文件）');
+  }
+  const ct = res.headers.get('content-type') || '';
+  if (res.status !== 200 || !ct.includes('application/json')) {
+    throw new Error('后端返回异常 (HTTP ' + res.status + ') —— 请确认是通过 http://127.0.0.1:8071 访问');
+  }
+  return res.json();
+}
+
+function toast(msg, ms=2200) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms);
+}
+
+const VIP_TAG = '<span class="viptag">👑 VIP</span>';
+const NO_VIP = '<span class="novip">普通账号</span>';
+
+async function refreshAccount() {
+  try {
+    const r = await jfetch('/api/userinfo');
+    const el = $('#acct');
+    if (r.ok) {
+      el.innerHTML = `<span>${(r.nickname || r.username || '')} (#${r.uid})</span>` +
+        (r.is_vip === 'y' ? VIP_TAG : NO_VIP);
+    } else { el.innerHTML = '<span class="novip">账号无效：' + (r.error || '') + '</span>'; }
+  } catch(e) { $('#acct').innerHTML = '<span class="novip">账号查询失败</span>'; }
+}
+
+/* ---------------- 分类首页 ---------------- */
+let curPos = '', curPage = 1, mode = 'block';
+
+function cardHTML(it) {
+  const esc = (s) => String(s||'').replace(/</g,'&lt;');
+  const img = it.img ? '/proxy/img?url=' + encodeURIComponent(it.img) : '';
+  let badge = '';
+  if (it.pay_type === 'vip') badge = '<span class="vip">VIP</span>';
+  else if (it.pay_type === 'money') badge = `<span class="coin">${esc(it.money && it.money !== '-1' ? it.money + ' 金币' : '金币')}</span>`;
+  return `
+  <div class="card" onclick="openPlay('${it.id}')">
+    <div class="thumb">
+      ${img ? `<img src="${img}" loading="lazy" onerror="this.outerHTML='<div class=&quot;noimg&quot;>封面加载失败</div>'">`
+            : '<div class="noimg">封面加载失败</div>'}
+      ${badge}
+      ${it.duration ? `<span class="dur">${esc(it.duration)}</span>` : ''}
+    </div>
+    <div class="info">
+      <div class="t">${esc(it.name) || '（无标题）'}</div>
+      <div class="m"><span>${esc(it.click||0)} 播放</span>${it.nickname ? `<span>${esc(it.nickname)}</span>` : ''}</div>
+    </div>
+  </div>`;
+}
+
+async function initTabs() {
+  try {
+    const r = await jfetch('/api/positions');
+    $('#tabs').innerHTML = r.positions.map((p,i) =>
+      `<span class="tab${i===0?' on':''}" data-key="${p.key}" onclick="pickTab(this)">${p.label}</span>`).join('');
+    curPos = r.positions[0].key;
+    loadBlocks(curPos, 1, true);
+  } catch(e) { $('#hint').textContent = '分类加载失败：' + e; }
+}
+
+function pickTab(el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  curPos = el.dataset.key; curPage = 1; mode = 'block';
+  loadBlocks(curPos, 1, true);
+}
+
+async function loadBlocks(position, page, replace) {
+  $('#moreBtn').style.display = 'none';
+  if (replace) { $('#grid').innerHTML = ''; $('#hint').style.display='block'; $('#hint').textContent='加载中…'; }
+  try {
+    const r = await jfetch('/api/block', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({position, page})
+    });
+    if (!r.ok) { $('#hint').textContent = '加载失败：' + (r.error||'') + ' ' + (r.msg||''); return; }
+    if (replace) $('#grid').innerHTML = '';
+    $('#hint').style.display = 'none';
+    let count = 0;
+    for (const sec of (r.sections||[])) {
+      count += sec.items.length;
+      $('#grid').insertAdjacentHTML('beforeend',
+        `<div class="sec">${sec.name ? sec.name.replace(/</g,'&lt;') : '更多视频'}</div>
+         <div class="row-grid">
+         ${sec.items.map(cardHTML).join('')}</div>`);
+    }
+    if (!count && replace) $('#grid').innerHTML = '<div id="hint" style="display:block">该分类暂无内容</div>';
+    if (count >= 10) $('#moreBtn').style.display = 'inline-block';
+  } catch(e) { $('#hint').textContent = '请求异常：' + e; }
+}
+
+function loadMore() {
+  curPage += 1;
+  if (mode === 'block') loadBlocks(curPos, curPage, false);
+  else doSearch(curPage, false);
+}
+
+/* ---------------- 搜索 ---------------- */
+async function doSearch(page=1, replace=true) {
+  mode = 'search'; curPage = page;
+  $('#moreBtn').style.display = 'none';
+  if (replace) { $('#grid').innerHTML = ''; $('#hint').style.display='block'; $('#hint').textContent='搜索中…'; }
+  try {
+    const r = await jfetch('/api/search', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ q: $('#q').value.trim(), page })
+    });
+    if (!r.ok) { $('#hint').textContent = '搜索失败：'+(r.error||'')+' '+(r.msg||''); return; }
+    $('#hint').style.display = 'none';
+    if (replace) $('#grid').innerHTML = '';
+    if (!r.items.length && replace) { $('#grid').innerHTML = '<div id="hint" style="display:block">没有结果</div>'; return; }
+    $('#grid').insertAdjacentHTML('beforeend',
+      `<div class="sec">搜索结果 · 第 ${page} 页</div>
+       <div class="row-grid">${r.items.map(cardHTML).join('')}</div>`);
+    if (r.items.length >= 10) $('#moreBtn').style.display = 'inline-block';
+  } catch(e) { $('#hint').textContent = '请求异常：' + e; }
+}
+
+async function openPlay(id) {
+  $('#modal').classList.add('show');
+  $('#pname').textContent = '加载中…';
+  $('#pmeta').innerHTML = ''; $('#ptips').style.display = 'none';
+  try {
+    const r = await jfetch('/api/detail', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})
+    });
+    if (!r.ok) { $('#pname').textContent = '获取详情失败'; $('#pmeta').textContent = r.error||''; return; }
+    $('#pname').textContent = r.name || ('#' + id);
+    $('#pmeta').innerHTML =
+      `<span>${r.nickname||''}</span><span>${r.cat_name||''}</span>` +
+      (r.duration?`<span>${r.duration}</span>`:'') +
+      (r.click?`<span>${r.click} 播放</span>`:'') +
+      (r.love?`<span>${r.love} 点赞</span>`:'') +
+      ((r.tags||[]).slice(0,6).map(t=>`<span>#${t}</span>`).join(''));
+    if (r.pay_type === 'money' && r.money && r.money !== '0' && r.money !== '-1') {
+      $('#ptips').textContent = '◉ 金币视频：需要 ' + r.money + ' 金币解锁';
+      $('#ptips').style.display = 'block';
+    } else if (r.layer_type === 'limit') {
+      $('#ptips').textContent = '⚠ ' + (r.play_tips || '非会员试看模式');
+      $('#ptips').style.display = 'block';
+    }
+    play(r.play_link, r.proxy_url);   // 直链优先，失败自动回落代理
+  } catch(e) { $('#pname').textContent = '请求异常：' + e; }
+}
+
+function play(direct, proxied) {
+  const v = $('#player');
+  if (hls) { hls.destroy(); hls = null; }
+  if (!direct && !proxied) { $('#ptips').textContent = '没有可播放的地址'; $('#ptips').style.display='block'; return; }
+  // 直链优先（不走服务器流量）；CORS/混合内容失败时自动回落到服务器代理
+  play._urls = [direct, proxied].filter(Boolean);
+  play._idx = 0;
+  attach(v, play._urls[0]);
+}
+
+function attach(v, url) {
+  if (hls) { hls.destroy(); hls = null; }
+  if (v.canPlayType('application/vnd.apple.mpegurl')) {
+    v.src = url; v.play().catch(()=>{});
+    v.onerror = () => tryNextSource(v);
+    return;
+  }
+  if (!Hls.isSupported()) { toast('浏览器不支持 HLS 播放'); return; }
+  hls = new Hls({ maxBufferLength: 30 });
+  hls.loadSource(url);
+  hls.attachMedia(v);
+  hls.on(Hls.Events.ERROR, (_, data) => {
+    if (data.fatal) tryNextSource(v, data.details);
+  });
+}
+
+function tryNextSource(v, why) {
+  play._idx = (play._idx || 0) + 1;
+  if (play._idx < play._urls.length) {
+    toast('直链播放失败' + (why ? `(${why})` : '') + '，已切换服务器代理', 2600);
+    attach(v, play._urls[play._idx]);
+  } else {
+    toast('播放失败：直链与代理均不可用');
+  }
+}
+
+function closeModal() {
+  $('#modal').classList.remove('show');
+  const v = $('#player'); v.pause();
+  if (hls) { hls.destroy(); hls = null; }
+  v.removeAttribute('src'); v.load();
+}
+
+async function openSettings() {
+  const c = await jfetch('/api/config');
+  $('#cfgToken').value = c.token || ''; $('#cfgDevice').value = c.device_id || '';
+  $('#cfgHost').value = c.api_host || ''; $('#acctInfo').innerHTML = '';
+  $('#setModal').classList.add('show');
+}
+function closeSettings() { $('#setModal').classList.remove('show'); }
+async function saveSettings() {
+  await jfetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ token: $('#cfgToken').value, device_id: $('#cfgDevice').value,
+                           api_host: $('#cfgHost').value, _auto_guest: true }) });
+  const r = await jfetch('/api/userinfo');
+  $('#acctInfo').innerHTML = r.ok
+    ? `✅ 验证通过：${r.nickname||r.username} (#${r.uid})，${r.is_vip==='y'?VIP_TAG:'<span class="novip">普通账号</span>'}`
+    : `❌ 验证失败：${r.error||''}`;
+  refreshAccount();
+}
+
+async function newGuest() {
+  $('#acctInfo').innerHTML = '⏳ 正在创建新游客号…';
+  try {
+    const r = await jfetch('/api/newguest', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    $('#acctInfo').innerHTML = `✅ 新游客号：${r.username||''} (#${r.uid})，deviceId=<code>${r.device_id}</code>`;
+    $('#cfgToken').value = r.token || ''; $('#cfgDevice').value = r.device_id || '';
+    refreshAccount();
+  } catch(e) { $('#acctInfo').innerHTML = '❌ 创建失败：' + e.message; }
+}
+
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+refreshAccount();
+initTabs();
+</script>
+</body>
+</html>

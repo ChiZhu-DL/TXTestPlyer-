@@ -1,0 +1,8 @@
+config.json
+img_debug/
+__pycache__/
+*.pyc
+tunnel.log
+tunnel_url.txt
+app.log
+nohup.out
