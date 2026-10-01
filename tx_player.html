@@ -29,6 +29,10 @@
             font-size:12px; text-decoration:none; border:1px solid #fcd34d;
             box-shadow:0 1px 4px rgba(245,158,11,.4); white-space:nowrap; }
   #getVip:hover { filter:brightness(1.08); }
+  .invite { background:#eef2ff; color:#4338ca; padding:2px 8px; border-radius:6px; cursor:pointer; }
+  .invite b { color:#312e81; }
+  #vipNotice { background:#fff7ed; border-bottom:1px solid #fed7aa; color:#9a3412;
+               padding:8px 20px; font-size:13px; line-height:1.6; }
   #acct b.vip { color:#d97706; }
   main { padding:16px 20px 20px; }
   #tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
@@ -121,6 +125,8 @@
   <button class="ghost" onclick="openSettings()">设置</button>
 </header>
 
+<div id="vipNotice" style="display:none;">⚠️ 播放视频需要 <b>VIP 状态</b>：当前账号不是会员，请先点右上角「<b>获取VIP</b>」领取，完成后<b>刷新本页</b>即可生效（账号与邀请码自动更新）。</div>
+
 <main>
   <div id="tabs"></div>
   <div id="hint">加载中…</div>
@@ -190,16 +196,35 @@ function toast(msg, ms=2200) {
 
 const VIP_TAG = '<span class="viptag">👑 VIP</span>';
 const NO_VIP = '<span class="novip">普通账号</span>';
+let LAST_ACCT = null;
 
 async function refreshAccount() {
   try {
     const r = await jfetch('/api/userinfo');
-    const el = $('#acct');
-    if (r.ok) {
-      el.innerHTML = `<span>${(r.nickname || r.username || '')} (#${r.uid})</span>` +
-        (r.is_vip === 'y' ? VIP_TAG : NO_VIP);
-    } else { el.innerHTML = '<span class="novip">账号无效：' + (r.error || '') + '</span>'; }
+    LAST_ACCT = r.ok ? r : null;
+    renderAcct();
+    const n = $('#vipNotice');
+    n.style.display = (r.ok && r.is_vip !== 'y') ? 'block' : 'none';
   } catch(e) { $('#acct').innerHTML = '<span class="novip">账号查询失败</span>'; }
+}
+
+function renderAcct() {
+  const el = $('#acct');
+  if (!LAST_ACCT) { el.innerHTML = '<span class="novip">账号查询失败</span>'; return; }
+  const r = LAST_ACCT;
+  const code = r.username || '';
+  el.innerHTML =
+    `<span title="点击复制邀请码" style="cursor:pointer" onclick="copyInvite()">${(r.nickname || '')} (#${r.uid})</span>` +
+    `<span class="invite" title="点击复制" onclick="copyInvite()">邀请码: <b>${code}</b> 📋</span>` +
+    (r.is_vip === 'y' ? VIP_TAG : NO_VIP);
+}
+
+function copyInvite() {
+  const code = (LAST_ACCT && LAST_ACCT.username) || '';
+  if (!code) return;
+  (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject())
+    .then(() => toast('邀请码已复制: ' + code))
+    .catch(() => toast('邀请码: ' + code, 3500));
 }
 
 /* ---------------- 分类首页 ---------------- */
