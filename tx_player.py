@@ -245,6 +245,15 @@ def index():
     return "tx_player.html 缺失", 404
 
 
+@app.get("/play")
+def play_page():
+    """独立播放页（新窗口打开）：视频全程直链，不经过本服务器"""
+    html = os.path.join(BASE_DIR, "play.html")
+    if os.path.exists(html):
+        return open(html, encoding="utf-8").read()
+    return "play.html 缺失", 404
+
+
 @app.get("/api/config")
 def api_config():
     t = CFG["token"]

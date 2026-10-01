@@ -237,7 +237,7 @@ function cardHTML(it) {
   if (it.pay_type === 'vip') badge = '<span class="vip">VIP</span>';
   else if (it.pay_type === 'money') badge = `<span class="coin">${esc(it.money && it.money !== '-1' ? it.money + ' 金币' : '金币')}</span>`;
   return `
-  <div class="card" onclick="openPlay('${it.id}')">
+  <div class="card" onclick="window.open('/play?id=${it.id}','_blank')">
     <div class="thumb">
       ${img ? `<img src="${img}" loading="lazy" onerror="this.outerHTML='<div class=&quot;noimg&quot;>封面加载失败</div>'">`
             : '<div class="noimg">封面加载失败</div>'}
@@ -349,38 +349,32 @@ async function openPlay(id) {
 function play(direct, proxied) {
   const v = $('#player');
   if (hls) { hls.destroy(); hls = null; }
-  if (!direct && !proxied) { $('#ptips').textContent = '没有可播放的地址'; $('#ptips').style.display='block'; return; }
-  // 直链优先（不走服务器流量）；CORS/混合内容失败时自动回落到服务器代理
-  play._urls = [direct, proxied].filter(Boolean);
-  play._idx = 0;
-  attach(v, play._urls[0]);
+  play._direct = direct || '';
+  // 实测 CDN 无 CORS 头（api.6hi6q6.com 与 lmm.tbxgdc.cn 均未返回 ACAO），
+  // 浏览器直链在本地/内网穿透/HTTPS 下都必被拦 → 网页端一律走同源代理；
+  // 直链通过「复制直链」按钮交给 VLC/PotPlayer 等本地播放器使用。
+  if (!proxied) { $('#ptips').textContent = '没有可播放的地址'; $('#ptips').style.display='block'; return; }
+  attach(v, proxied);
 }
 
 function attach(v, url) {
   if (hls) { hls.destroy(); hls = null; }
-  if (v.canPlayType('application/vnd.apple.mpegurl')) {
-    v.src = url; v.play().catch(()=>{});
-    v.onerror = () => tryNextSource(v);
-    return;
-  }
+  if (v.canPlayType('application/vnd.apple.mpegurl')) { v.src = url; v.play().catch(()=>{}); return; }
   if (!Hls.isSupported()) { toast('浏览器不支持 HLS 播放'); return; }
   hls = new Hls({ maxBufferLength: 30 });
   hls.loadSource(url);
   hls.attachMedia(v);
   hls.on(Hls.Events.ERROR, (_, data) => {
-    if (data.fatal) tryNextSource(v, data.details);
+    if (data.fatal) console.warn('[play] 代理播放错误:', data.type, data.details);
   });
 }
 
-function tryNextSource(v, why) {
-  console.warn('[play] 直链失败原因:', why, '→ 切换下一来源');
-  play._idx = (play._idx || 0) + 1;
-  if (play._idx < play._urls.length) {
-    toast('直链播放失败' + (why ? `(${why})` : '') + '，已切换服务器代理', 2600);
-    attach(v, play._urls[play._idx]);
-  } else {
-    toast('播放失败：直链与代理均不可用');
-  }
+function copyDirect() {
+  const u = play._direct;
+  if (!u) { toast('当前视频没有直链'); return; }
+  (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject())
+    .then(() => toast('直链已复制，粘贴到 VLC/PotPlayer 播放（签名约40分钟内有效）', 3200))
+    .catch(() => toast('直链: ' + u, 4200));
 }
 
 function closeModal() {

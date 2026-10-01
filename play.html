@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>播放</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<style>
+  :root { --bg:#111318; --txt:#e5e7eb; --sub:#9ca3af; --accent:#f59e0b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:"Segoe UI","Microsoft YaHei",sans-serif;
+         min-height:100vh; display:flex; flex-direction:column; }
+  video { width:100%; max-height:72vh; background:#000; }
+  .bar { padding:14px 18px; }
+  .bar h1 { font-size:16px; line-height:1.5; margin-bottom:6px; }
+  .bar .meta { font-size:12px; color:var(--sub); }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+  button, a.btn { padding:9px 18px; border-radius:8px; border:none; cursor:pointer;
+                  font-size:14px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+  .primary { background:var(--accent); color:#111; font-weight:700; }
+  .ghost { background:#1f2430; color:var(--txt); border:1px solid #2d3442; }
+  #msg { padding:14px 18px; font-size:14px; line-height:1.8; color:#fbbf24; display:none;
+         background:#1a1d26; border-top:1px solid #2d3442; }
+  #msg code { background:#000; padding:2px 6px; border-radius:4px; font-size:12px; word-break:break-all; }
+</style>
+</head>
+<body>
+<video id="v" controls playsinline autoplay></video>
+<div class="bar">
+  <h1 id="name">加载中…</h1>
+  <div class="meta" id="meta"></div>
+  <div class="actions">
+    <button class="primary" onclick="copyLink()">📋 复制直链（给 VLC/PotPlayer）</button>
+    <a class="ghost" id="openRaw" href="#" target="_blank" rel="noopener">新标签打开直链</a>
+    <button class="ghost" onclick="window.close()">关闭</button>
+  </div>
+</div>
+<div id="msg"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let DIRECT = '';
+
+async function jfetch(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+async function init() {
+  const id = new URLSearchParams(location.search).get('id');
+  if (!id) { $('#name').textContent = '缺少视频 id'; return; }
+  try {
+    const r = await jfetch('/api/detail', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    if (!r.ok) { $('#name').textContent = '获取失败：' + (r.error || ''); return; }
+    DIRECT = r.play_link || '';
+    $('#name').textContent = r.name || ('#' + id);
+    $('#meta').textContent = [r.nickname, r.cat_name, r.duration, r.click ? r.click + ' 播放' : '']
+      .filter(Boolean).join(' · ');
+    $('#openRaw').href = DIRECT;
+    if (r.pay_type === 'money' && r.money && r.money !== '0' && r.money !== '-1')
+      $('#meta').textContent += ' · 💰 ' + r.money + ' 金币';
+    else if (r.pay_type === 'vip') $('#meta').textContent += ' · VIP 视频';
+    if (r.layer_type === 'limit') $('#meta').textContent += ' · ⚠ ' + (r.play_tips || '试看模式');
+    if (!DIRECT) { $('#name').textContent = '没有可播放的地址'; return; }
+    startPlay();
+  } catch (e) { $('#name').textContent = '请求异常：' + e.message; }
+}
+
+function startPlay() {
+  const v = $('#v');
+  // 1) 原生 HLS（iOS Safari 等支持原生 HLS 的浏览器）：<video> 加载媒体不走 CORS，直链直接可播
+  if (v.canPlayType('application/vnd.apple.mpegurl')) {
+    v.src = DIRECT;
+    v.onerror = () => showFallback('原生播放失败');
+    v.play().catch(() => {});
+    return;
+  }
+  // 2) 桌面 Chrome/Android：尝试 hls.js 直链（CDN 未开放 CORS 时会被浏览器拦截）
+  if (Hls.isSupported()) {
+    const hls = new Hls({ maxBufferLength: 30 });
+    hls.loadSource(DIRECT);
+    hls.attachMedia(v);
+    hls.on(Hls.Events.ERROR, (_, data) => {
+      if (data.fatal) showFallback('浏览器拦截了跨域直链（CDN 未开放 CORS）');
+    });
+    return;
+  }
+  showFallback('当前浏览器不支持 HLS');
+}
+
+function showFallback(reason) {
+  const m = $('#msg');
+  m.style.display = 'block';
+  m.innerHTML =
+    `当前浏览器无法直接播放（${reason}）。<br>` +
+    `👉 解决方法：点上方「<b>📋 复制直链</b>」，用 <b>VLC / PotPlayer / mpv</b> 打开播放；` +
+    `iOS 用 Safari 打开本页即可直接播。<br>` +
+    `<code>${DIRECT}</code><br>` +
+    `<span style="color:#6b7280">注：视频服务器未开放跨域访问（无 CORS 头），且直链签名约 40 分钟后过期。</span>`;
+}
+
+function copyLink() {
+  if (!DIRECT) return;
+  (navigator.clipboard ? navigator.clipboard.writeText(DIRECT) : Promise.reject())
+    .then(() => { const b = document.querySelector('.primary'); b.textContent = '✅ 已复制';
+                  setTimeout(() => b.textContent = '📋 复制直链（给 VLC/PotPlayer）', 1500); })
+    .catch(() => { $('#msg').style.display = 'block';
+                   $('#msg').innerHTML = '直链：<code>' + DIRECT + '</code>'; });
+}
+
+init();
+</script>
+</body>
+</html>

@@ -69,14 +69,16 @@ python tx_player.py
 | 首页分类 | `POST /cxapi/movie/block` | 参数 `{page, position}`；11 个 position（推荐/最新/热门/国产/原创/自制/网红/伦理/AV/动漫/暗黑推荐） |
 | 搜索/推荐流 | `POST /cxapi/movie/search` | 推荐流参数已实测；**关键词搜索的 `keywords` 字段未验证**，搜不出结果需抓包修正 |
 | 视频详情 | `POST /cxapi/movie/detail` | 57 个字段；`play_link` 为播放地址，`pay_type` 为付费类型 |
-| 播放 | **直链优先**：视频流直接从 CDN 拉取，不经本服务器；CORS/混合内容失败时自动回落到 m3u8 代理（HLS 带 AES-128，代理会代取密钥） |
+| 播放 | **新窗口独立播放页 `/play?id=`，视频 100% 直链**：`<video>`/hls.js 直连 CDN，服务器零视频流量。iOS Safari 原生直接播；桌面 Chrome 因 CDN 未开放 CORS（实测无 ACAO 头）无法网页播放，页面会引导复制直链给 VLC/PotPlayer（签名约 40 分钟有效） |
 | 用户信息 | `POST /cxapi/user/info` | 设置页验证账号用 |
 
-## 播放流量与内网穿透
+## 播放与内网穿透
 
-- **视频不走服务器流量**：`movie/detail` 拿到 `play_link` 后，浏览器通过 hls.js 直连 CDN 拉流；只有直链失败（CORS 拦截、混合内容等）才自动切换到服务器代理，控制台/toast 会有提示。
-- **内网穿透**：服务监听 `0.0.0.0`，frp / 花生壳等把 `8071` 端口映射出去即可。
-  注意：若穿透后是 **HTTPS** 页面，浏览器会拦截页面里的 `http://` 直链（混合内容）——此时会自动回落代理模式（封面图本身就是相对路径走代理，不受影响），功能不受损，只是那部分流量会过服务器。
+- 点卡片 → 新窗口 `/play?id=` 播放页 → 直接请求 CDN 直链，**不经过本服务器**。
+- 浏览器兼容矩阵：
+  - **iOS Safari / 原生支持 HLS 的浏览器**：直接播放 ✅（媒体加载不受 CORS 限制）
+  - **桌面 Chrome/Edge/Android Chrome**：CDN 无跨域许可，网页播放被浏览器拦截 ❌ —— 播放页会自动提示，复制直链到 VLC/PotPlayer 即可看
+- **内网穿透**：服务监听 `0.0.0.0`，frp / 花生壳 / cloudflared 把 `8071` 端口映射出去即可。穿透页面上封面、搜索、详情全部正常；视频直链与页面协议（http/https）需一致，否则浏览器拦混合内容——iOS Safari 下若穿透是 HTTPS 而直链是 HTTP，也请用复制直链 → VLC 的方式。
 
 ## 协议要点（逆向结论）
 
