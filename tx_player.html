@@ -373,6 +373,7 @@ function attach(v, url) {
 }
 
 function tryNextSource(v, why) {
+  console.warn('[play] 直链失败原因:', why, '→ 切换下一来源');
   play._idx = (play._idx || 0) + 1;
   if (play._idx < play._urls.length) {
     toast('直链播放失败' + (why ? `(${why})` : '') + '，已切换服务器代理', 2600);
