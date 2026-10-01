@@ -28,7 +28,7 @@ import uuid
 from urllib.parse import quote
 
 import requests
-from flask import Flask, request, jsonify, Response, stream_with_context
+from flask import Flask, request, jsonify, Response, stream_with_context, redirect
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 
@@ -243,6 +243,22 @@ def index():
     if os.path.exists(html):
         return open(html, encoding="utf-8").read()
     return "tx_player.html 缺失", 404
+
+
+@app.get("/go")
+def go_direct():
+    """点卡片 → 302 跳转到视频直链（新窗口直开，服务器只出一条重定向，零视频流量）"""
+    d = request.get_json(force=True, silent=True) or {}
+    vid = request.args.get("id", "").strip()
+    if not vid:
+        return "缺少 id", 400
+    ok, obj = api_post("/cxapi/movie/detail", {"id": vid})
+    if not ok:
+        return f"获取直链失败: {obj.get('error','')} {obj.get('msg','')}", 502
+    link = (obj.get("data") or {}).get("play_link") or ""
+    if not link:
+        return "该视频没有可播放的直链", 404
+    return redirect(link, code=302)
 
 
 @app.get("/play")

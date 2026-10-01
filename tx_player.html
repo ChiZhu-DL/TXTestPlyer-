@@ -237,7 +237,7 @@ function cardHTML(it) {
   if (it.pay_type === 'vip') badge = '<span class="vip">VIP</span>';
   else if (it.pay_type === 'money') badge = `<span class="coin">${esc(it.money && it.money !== '-1' ? it.money + ' 金币' : '金币')}</span>`;
   return `
-  <div class="card" onclick="window.open('/play?id=${it.id}','_blank')">
+  <div class="card" onclick="window.open('/go?id=${it.id}','_blank')">
     <div class="thumb">
       ${img ? `<img src="${img}" loading="lazy" onerror="this.outerHTML='<div class=&quot;noimg&quot;>封面加载失败</div>'">`
             : '<div class="noimg">封面加载失败</div>'}
