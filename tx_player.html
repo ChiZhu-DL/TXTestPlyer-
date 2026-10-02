@@ -41,6 +41,8 @@
   .tab.on { background:var(--accent); border-color:var(--accent); color:#fff; }
   .sec { margin:18px 0 10px; font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
   .sec::before { content:''; width:4px; height:16px; background:var(--accent); border-radius:2px; }
+  .morelink { margin-left:auto; font-size:12px; color:var(--sub); text-decoration:none; cursor:pointer; }
+  .morelink:hover { color:var(--accent); }
   #grid { display:block; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden;
           cursor:pointer; transition:box-shadow .15s; display:flex; flex-direction:column; }
@@ -282,8 +284,9 @@ async function loadBlocks(position, page, replace) {
     let count = 0;
     for (const sec of (r.sections||[])) {
       count += sec.items.length;
+      const moreLink = sec.id ? `<a class="morelink" href="/more?id=${sec.id}" target="_blank">更多 ›</a>` : '';
       $('#grid').insertAdjacentHTML('beforeend',
-        `<div class="sec">${sec.name ? sec.name.replace(/</g,'&lt;') : '更多视频'}</div>
+        `<div class="sec"><span>${sec.name ? sec.name.replace(/</g,'&lt;') : '更多视频'}</span>${moreLink}</div>
          <div class="row-grid">
          ${sec.items.map(cardHTML).join('')}</div>`);
     }

@@ -270,6 +270,15 @@ def play_page():
     return "play.html 缺失", 404
 
 
+@app.get("/more")
+def more_page():
+    """"更多"独立页（新窗口打开）：区块三分类 + 分页列表"""
+    html = os.path.join(BASE_DIR, "more.html")
+    if os.path.exists(html):
+        return open(html, encoding="utf-8").read()
+    return "more.html 缺失", 404
+
+
 @app.get("/api/config")
 def api_config():
     t = CFG["token"]
@@ -361,8 +370,50 @@ def api_block():
             continue
         items = [card(it) for it in (b.get("items") or []) if isinstance(it, dict) and it.get("id")]
         if items:
-            sections.append({"name": (b.get("name") or "").strip(), "style": b.get("style"), "items": items})
+            sections.append({"id": b.get("id", ""), "name": (b.get("name") or "").strip(),
+                             "style": b.get("style"), "items": items})
     return jsonify({"ok": True, "position": position, "page": d.get("page", 1), "sections": sections})
+
+
+@app.post("/api/blockDetail")
+def api_block_detail():
+    """区块"更多"页配置：POST {id} → {name, style, menus:[{name, filter}]}"""
+    d = request.get_json(force=True, silent=True) or {}
+    bid = str(d.get("id", "")).strip()
+    if not bid:
+        return jsonify({"ok": False, "error": "缺少 id"})
+    ok, obj = api_post("/cxapi/movie/blockDetail", {"id": bid})
+    if not ok:
+        return jsonify({"ok": False, **obj})
+    v = obj.get("data") or {}
+    menus = []
+    for m in (v.get("menus") or []):
+        if not isinstance(m, dict):
+            continue
+        try:
+            flt = json.loads(m.get("filter") or "{}")
+        except Exception:
+            flt = {}
+        menus.append({"name": m.get("name", ""), "filter": flt})
+    return jsonify({"ok": True, "id": v.get("id"), "name": v.get("name"),
+                    "style": v.get("style"), "menus": menus})
+
+
+@app.post("/api/more")
+def api_more():
+    """"更多"列表：POST {filter: {...}, page} → 复用 /cxapi/movie/search"""
+    d = request.get_json(force=True, silent=True) or {}
+    flt = d.get("filter") or {}
+    if not isinstance(flt, dict) or not flt:
+        return jsonify({"ok": False, "error": "缺少 filter"})
+    data = dict(flt)
+    data["page"] = int(d.get("page", 1))
+    ok, obj = api_post("/cxapi/movie/search", data)
+    if not ok:
+        return jsonify({"ok": False, **obj})
+    lst = obj.get("data") or []
+    items = [card(it) for it in lst if isinstance(it, dict) and it.get("id")]
+    return jsonify({"ok": True, "items": items, "page": data["page"]})
 
 
 @app.post("/api/search")
