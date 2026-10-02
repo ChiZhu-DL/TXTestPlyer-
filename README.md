@@ -99,6 +99,18 @@ python tx_player.py
 - **手机打不开**：确认同一局域网、防火墙放行 8071、`listen_host` 为 `0.0.0.0`。
 - **服务端返回明文(未加密)**：通常是 version 头不对或被风控，检查 `app_version`。
 
+## GitHub 工作流使用（云端跑 + 隧道地址）
+
+仓库 `ChiZhu-DL/TXTestPlyer-` 配了 Actions（`.github/workflows/tunnel.yml`）：
+
+1. **触发**：push 到 main 自动跑；或仓库 **Actions → TX Player + Cloudflare Tunnel → Run workflow** 手动跑
+2. **拿地址**：点进运行中的 Job → 右侧 **Summary** 里有 `https://xxxx.trycloudflare.com` 链接，点击即达播放器（也可在日志里搜「公网访问地址」）
+3. **有效期**：约 **5.5 小时**自动结束，地址随机、每次不同；到期/失效后重新 Run 一次拿新地址
+4. **停止**：运行页右上角 **Cancel workflow** 随时终止
+5. 改了代码只想更新文档不想触发运行：commit 信息里带 `[skip ci]`
+
+> 纯文档改动请用 `[skip ci]` 提交，避免空耗 5 小时运行时长。
+
 ## 免责声明
 
 本项目仅为学习 Flutter App 协议逆向的技术验证，所有数据来自自行抓包分析。
